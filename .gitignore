@@ -1,19 +1,4 @@
-# Sensitive files
 .mineru_token
-
-# Python
 __pycache__/
 *.pyc
-*.pyo
-.venv/
-
-# Node
-node_modules/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Temp
-_upload_temp/
-*.zip
+.env

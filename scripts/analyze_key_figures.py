@@ -6,7 +6,7 @@ Uploads PDF to NotebookLM, asks it to identify the 3-5 most important figures,
 then generates individual analysis files (one per figure) with deep解读.
 
 Usage:
-    python analyze_key_figures.py <pdf_path> <output_dir> [--max-figures 4]
+    python analyze_key_figures.py <pdf_path> <output_dir> [--max-figures 4] [--notebook-id ID]
 
 Output:
     figures_analysis/
@@ -111,13 +111,11 @@ def ask(question, notebook_id):
 
 def find_image_for_figure(figure_desc, images_dir, paper_md_path):
     """Try to match a figure description to an actual image file."""
-    # Read paper.md for figure references
     paper_text = ""
     if os.path.exists(paper_md_path):
         with open(paper_md_path, "r", encoding="utf-8", errors="ignore") as f:
             paper_text = f.read()
 
-    # Get all images sorted by size (largest = most important)
     images = []
     if os.path.isdir(images_dir):
         for f in os.listdir(images_dir):
@@ -127,22 +125,18 @@ def find_image_for_figure(figure_desc, images_dir, paper_md_path):
                 images.append((f, sz))
     images.sort(key=lambda x: x[1], reverse=True)
 
-    # Try to find figure number in description
     fig_match = re.search(r'[Ff]ig(?:ure)?\.?\s*(\d+)', figure_desc)
     if fig_match:
         fig_num = fig_match.group(1)
-        # Search paper.md for the figure reference and find nearby image
         pattern = rf'[Ff]ig(?:ure)?\.?\s*{fig_num}.*?\n.*?!?\[.*?\]\((images/[^)]+)\)'
         m = re.search(pattern, paper_text, re.DOTALL)
         if m:
             img_ref = m.group(1)
             img_name = os.path.basename(img_ref)
-            # Find matching file
             for fname, sz in images:
                 if fname == img_name or img_name in fname:
                     return fname, sz
 
-    # Fallback: return largest unmatched image
     if images:
         return images[0]
 
@@ -153,8 +147,11 @@ def main():
     parser = argparse.ArgumentParser(description="NotebookLM key figure analysis")
     parser.add_argument("pdf", help="Paper PDF file")
     parser.add_argument("output_dir", nargs="?", default=".")
-    parser.add_argument("--notebook-id", "-n", default=None)
+    parser.add_argument("--notebook-id", "-n", default=None,
+                        help="Existing notebook ID (skip notebook creation and PDF upload)")
     parser.add_argument("--max-figures", type=int, default=4, help="Max key figures to analyze")
+    parser.add_argument("--skip-upload", action="store_true",
+                        help="Skip PDF upload (use when source already added manually)")
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -172,7 +169,7 @@ def main():
         print("="*60)
         sys.exit(1)
 
-    # ── Step 2: Create notebook and upload PDF ──
+    # ── Step 2: Get or create notebook ──
     notebook_id = args.notebook_id
     if not notebook_id:
         pdf_name = os.path.splitext(os.path.basename(args.pdf))[0][:50]
@@ -184,43 +181,41 @@ def main():
             sys.exit(1)
         print(f"  ✓ Created: {notebook_id}")
 
-    print(f"[NotebookLM] Uploading PDF...")
-    source_id = add_source(notebook_id, args.pdf)
-    if not source_id:
-        print("❌  PDF 上传失败")
-        sys.exit(1)
+    print(f"[NotebookLM] Notebook: {notebook_id[:20]}...")
 
-    print(f"[NotebookLM] Processing...")
-    if not wait_source(notebook_id, source_id):
-        print("❌  PDF 处理超时")
-        sys.exit(1)
-    print("  ✓ PDF ready")
+    # ── Step 3: Upload PDF (skip if --skip-upload or --notebook-id with manual upload) ──
+    if not args.skip_upload:
+        print(f"[NotebookLM] Uploading PDF...")
+        source_id = add_source(notebook_id, args.pdf)
+        if not source_id:
+            print("\n" + "="*60)
+            print("⚠️  PDF 上传失败（subprocess 常见问题）")
+            print("="*60)
+            print("  请手动上传后重试:")
+            print(f'  notebooklm source add "{args.pdf}" --notebook {notebook_id}')
+            print(f"  然后重新运行: python {sys.argv[0]} \"{args.pdf}\" \"{args.output_dir}\" --notebook-id {notebook_id} --skip-upload")
+            print("="*60)
+            sys.exit(1)
 
-    # ── Step 3: Ask NotebookLM to identify key figures ──
+        print(f"[NotebookLM] Processing...")
+        if not wait_source(notebook_id, source_id):
+            print("❌  PDF 处理超时")
+            sys.exit(1)
+        print("  ✓ PDF ready")
+
+    # ── Step 4: Ask NotebookLM to identify key figures ──
+    # CRITICAL: Keep prompts SHORT (~50 chars) to avoid 180s timeout
     print(f"\n[NotebookLM] Identifying key figures...")
-    identify_prompt = (
-        f"请从这篇论文中找出最重要的 {args.max_figures} 张图（Figure），"
-        f"按重要性排序。对每张图，请说明：\n"
-        f"1. Figure 编号和标题\n"
-        f"2. 图中展示了什么内容（详细描述）\n"
-        f"3. 关键数据或趋势\n"
-        f"4. 这张图为什么重要（与论文核心贡献的关系）\n\n"
-        f"请用以下格式回答：\n"
-        f"## Figure X: 标题\n"
-        f"**内容：** ...\n"
-        f"**关键数据：** ...\n"
-        f"**重要性：** ...\n"
-    )
+    identify_prompt = f"找出论文中最重要的{args.max_figures}张图，按重要性排序。每张说明Figure编号、标题、内容、为什么重要。"
     figures_answer = ask(identify_prompt, notebook_id)
     if not figures_answer:
         print("❌  NotebookLM 无法识别图片")
         sys.exit(1)
     print(f"  ✓ Identified key figures ({len(figures_answer)} chars)")
 
-    # ── Step 4: Deep analysis for each figure ──
-    # Parse figure numbers from the answer
-    fig_sections = re.split(r'(?=##\s*Figure\s*\d+)', figures_answer)
-    fig_sections = [s.strip() for s in fig_sections if s.strip() and re.match(r'##\s*Figure', s.strip())]
+    # ── Step 5: Deep analysis for each figure ──
+    fig_sections = re.split(r'(?=##?\s*Figure\s*\d+)', figures_answer)
+    fig_sections = [s.strip() for s in fig_sections if s.strip() and re.match(r'##?\s*Figure', s.strip())]
 
     print(f"\n[NotebookLM] Deep analysis for {len(fig_sections)} figures...")
 
@@ -228,21 +223,13 @@ def main():
     for i, section in enumerate(fig_sections):
         fig_match = re.search(r'Figure\s*(\d+)', section)
         fig_num = fig_match.group(1) if fig_match else str(i+1)
-        fig_title_match = re.search(r'##\s*Figure\s*\d+[:\s]*(.+?)(?:\n|$)', section)
+        fig_title_match = re.search(r'##?\s*Figure\s*\d+[:\s]*(.+?)(?:\n|$)', section)
         fig_title = fig_title_match.group(1).strip() if fig_title_match else f"Figure {fig_num}"
 
         print(f"\n  [{i+1}/{len(fig_sections)}] Figure {fig_num}: {fig_title[:50]}...")
 
-        # Ask for deeper analysis
-        deep_prompt = (
-            f"请对论文中的 Figure {fig_num}（{fig_title}）进行深度解读：\n"
-            f"1. 这张图的具体内容是什么？（详细描述图中的每个元素）\n"
-            f"2. 图中的关键数据点、趋势或关系是什么？\n"
-            f"3. 这张图如何支持论文的核心论点？\n"
-            f"4. 从这张图中可以得出什么结论？\n"
-            f"5. 这张图有什么局限性或需要注意的地方？\n"
-            f"请引用论文中对这张图的描述和分析。"
-        )
+        # Short prompt to avoid timeout
+        deep_prompt = f"对Figure {fig_num}进行深度解读：具体元素、关键数据、如何支持核心论点、可得结论。引用论文原文。"
         deep_answer = ask(deep_prompt, notebook_id)
 
         if not deep_answer:
@@ -251,7 +238,6 @@ def main():
 
         print(f"    ✓ {len(deep_answer)} chars")
 
-        # Find matching image file
         img_file, img_size = find_image_for_figure(f"Figure {fig_num} {fig_title}", images_dir, paper_md)
 
         analysis_results.append({
@@ -265,7 +251,7 @@ def main():
 
         time.sleep(3)
 
-    # ── Step 5: Generate individual analysis files ──
+    # ── Step 6: Generate individual analysis files ──
     print(f"\n[Output] Generating {len(analysis_results)} figure analysis files...")
 
     for result in analysis_results:
@@ -280,7 +266,6 @@ def main():
             "",
         ]
 
-        # Embed image if found
         if result["image_file"]:
             rel_path = f"../images/{result['image_file']}"
             lines.append(f"![Figure {fig_num}]({rel_path})")
@@ -302,7 +287,7 @@ def main():
             f.write("\n".join(lines))
         print(f"  ✓ {filename}")
 
-    # ── Step 6: Generate summary ──
+    # ── Step 7: Generate summary ──
     summary_path = os.path.join(figures_dir, "summary.md")
     lines = [
         "# 关键图片分析摘要",
