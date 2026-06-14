@@ -69,12 +69,9 @@ Step 3: 主代理读取所有独立笔记文件，编译汇总：
          - "每个最致命问题"直评表
 ```
 
-**Subagent prompt template for batch (speed-read tier):**
-```
-goal: "Read the full text of ONE paper and generate a structured speed-read summary"
-context: "File: <path>\n\nFor this ONE paper, extract ALL of:\n1. 标题\n2. 作者\n3. 期刊+年份+DOI\n4. 一句话总结\n5. 核心问题 (3-5 sentences)\n6. 主要贡献 (4-6 bullets)\n7. 核心方法/框架\n8. 关键结果 (specific numbers)\n9. 不足与局限 (3-5 specific points, NOT generic)\n10. 可借鉴之处 (2-3 points)\n\nBe SPECIFIC. Cite actual numbers from the paper. Do NOT write generic criticisms like '实验规模不足' — say exactly what was tested and what wasn't.\nRespond in Chinese."
-toolsets: ["terminal", "file"]
-```
+**Subagent template usage:** Subagents use existing templates — speed-read tier uses `templates/speed-read.md` (modules 1/2/5 only), quick-read tier uses `templates/deep-read.md` (modules 1/2/3/5, skip module 4). Pass template path in subagent context.
+
+**Edge case: last round with <3 papers.** If total papers mod 3 leaves 1 or 2, the last `delegate_task` call has 1 or 2 tasks. This is fine — just pass fewer tasks. Don't pad with duplicates.
 
 **Mixed folder (papers + patents):** If user says "总结论文和专利" or the folder contains patent PDFs alongside papers, detect document type from filenames (look for "US" + patent number patterns, or IPC codes). Patents use a different summary structure — see `references/patent-identification.md`. For scanned patent PDFs (no text layer), skip MinerU and use Google Patents browser lookup by patent number.
 
