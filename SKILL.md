@@ -64,7 +64,7 @@ Step 2: delegate_task — each subagent processes 1 paper individually
          18 papers = 6 rounds, ~8-12 min total
 Step 3: 主代理读取所有独立笔记文件，编译汇总：
          - 按文件夹/主题分组的逐篇列表
-         - 横向对比表（年份/期刊/方法/关键结果/不足）
+         - 横向对比表（年份/期刊/机构/方法/关键结果/不足）
          - 综合启示（关联用户课题）
          - "每个最致命问题"直评表
 ```
@@ -192,7 +192,13 @@ Score < 6 → regenerate. Target: 8.0+.
 - **Chinese output**: All summaries in Chinese unless user specifies otherwise. Patent names translated to Chinese with original English in parentheses.
 - **Batch quality over speed**: User explicitly identified that batch processing degrades per-paper quality. Always prioritize per-paper analysis depth over processing speed. One paper per LLM call is non-negotiable for batch modes. If user asks for 18 papers, take 10 minutes with good quality rather than 3 minutes with generic output.
 
+## User Workflow Preference
+
+After batch speed-read of a folder, user moves the generated `.md` files from `paper-readings/speed-read/` back into the **source paper folder** (co-located with the PDFs). Example: speed-read notes for `03_避障与碰撞避免/*.pdf` get moved into `03_避障与碰撞避免/*.md`. This keeps notes beside their source papers for easy reference. Offer to move files after batch completes, or do it proactively if the pattern is clear.
+
 ## Common Pitfalls
+
+0. **Template consistency across modes.** speed-read.md and deep-read.md are maintained independently — NOT derived from each other. Any field added to one template must be checked against the other. The "机构" (affiliation) field was missing from speed-read for months while present in deep-read. When editing either template, diff the basic-info table against the other mode's template.
 
 1. **MinerU Cloud only accepts URLs or pre-signed upload.** For local PDFs, `mineru_api.py` handles: POST /file-urls/batch → PUT to pre-signed URL → poll → download ZIP. Use `curl --ssl-no-revoke` on Windows.
 
@@ -218,11 +224,19 @@ Score < 6 → regenerate. Target: 8.0+.
 
 14. **USPTO PatentsView API has migrated.** The old `api.patentsview.org` endpoint now redirects to `data.uspto.gov`. Direct API queries may fail silently. Use Google Patents browser lookup instead — it renders client-side JS but the snapshot contains all metadata (title, inventors, assignee, dates, abstract, classifications).
 
-15. **Subagent delegation for patent search is unreliable.** Subagents may fabricate patent details (inventor names, abstracts) when they can't access the actual source. Always verify patent metadata yourself via Google Patents browser lookup. Do NOT trust subagent-reported patent abstracts without verification.
+16. **Subagent delegation for patent search is unreliable.** Subagents may fabricate patent details (inventor names, abstracts) when they can't access the actual source. Always verify patent metadata yourself via Google Patents browser lookup. Do NOT trust subagent-reported patent abstracts without verification.
 
-16. **Ambiguous patent filenames.** Filenames like "USDistributed training..." may start with "US" (country code) followed by the title — the patent number is not in the filename. Use Google Patents search with key title words to identify the actual patent number.
+17. **Long Unicode filenames cause temp-directory creation failure.** PDF filenames with Unicode characters (e.g. special dashes ‑, em-dash —) or very long names (>50 chars) can cause `os.makedirs` or `fitz.open` to fail on Windows/MSYS. Workaround: truncate the paper name to ~50 ASCII chars when creating the temp directory. Example: `paper_name[:50]` or use a manual short name like `RNN_DualArm_Obstacle_Avoidance`.
+
+18. **Batch speed-read file delivery.** After processing a folder of papers, user typically wants the `.md` notes moved from `paper-readings/speed-read/` back to the source paper folder. Offer to move files proactively.
+
+19. **USPTO PatentsView API has migrated.**
 
 17. **Python 3.11 rejects inline regex flags.** Use `re.IGNORECASE` parameter, never `(?i)` mid-pattern.
+
+19. **execute_code read_file dedup breaks batch compilation.** Inside `execute_code` scripts that compile batch results, `read_file()` returns `content_returned: False` (deduplication: file was already read by a subagent earlier in the conversation). Use `terminal('cat "<path>"')` instead to get the actual file content. This hit in production when compiling 18 speed-read notes — 5 calls all returned `bool` instead of `str`.
+
+20. **Simplified mode templates must keep basic metadata fields consistent.** When adding a new mode template (speed-read, quick-read, etc.), the "论文基本信息" table MUST include the same fields as `templates/deep-read.md`: 标题, 作者, 机构, 期刊, DOI, 关键词, 摘要. Omitting fields like "机构" (affiliations) is a bug — users expect all modes to report the same core metadata. Adding extra fields (通讯作者, 引用数, 论文结构大纲) in the full template is fine; subtracting from the shared set is not.
 
 12. **NotebookLM has no mindmap command.** Use Mermaid in Markdown instead.
 

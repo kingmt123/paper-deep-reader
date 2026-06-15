@@ -90,3 +90,4 @@ for note_file in sorted(glob("speed-read/*.md")):
 5. **Subagent patent fabrication**: Subagents may invent patent details when they can't verify. Always spot-check patents yourself via browser.
 6. **Round-robin batching**: If a round has <3 papers (e.g., last round has 1-2), still delegate — don't skip.
 7. **完整解读 batch is serial**, not parallel — MinerU and NBLM have API rate limits. Process one paper at a time, save result, move to next.
+8. **read_file dedup in execute_code.** `hermes_tools.read_file()` deduplicates within a session — if a file was already read via `read_file` (in execute_code or the main conversation), subsequent calls return `content_returned: False` instead of the actual content. During Step 4 compilation, do NOT use `read_file` in `execute_code` to re-read the individual notes. Use `terminal('cat "path"')` instead to force a fresh read.

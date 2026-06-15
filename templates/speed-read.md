@@ -10,6 +10,7 @@
 |------|------|
 | 标题 | {title} |
 | 作者 | {authors} |
+| 机构 | {affiliations} |
 | 期刊 | {journal} ({year}) |
 | DOI | {doi} |
 | 关键词 | {keywords} |

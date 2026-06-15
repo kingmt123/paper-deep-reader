@@ -26,10 +26,10 @@ After all individual paper notes are generated (one per subagent), the main agen
 
 ## 📊 横向对比表
 
-| # | 文献 | 年份 | 期刊 | 核心方法 | 关键结果 | 最大问题 |
-|---|------|------|------|----------|----------|----------|
-| 1 | {short_name} | {year} | {journal} | {method} | {result} | {flaw} |
-| 2 | ... | ... | ... | ... | ... | ... |
+| # | 文献 | 年份 | 期刊 | 机构 | 核心方法 | 关键结果 | 最大问题 |
+|---|------|------|------|------|----------|----------|----------|
+| 1 | {short_name} | {year} | {journal} | {institution} | {method} | {result} | {flaw} |
+| 2 | ... | ... | ... | ... | ... | ... | ... |
 
 ## 🔑 综合启示
 
